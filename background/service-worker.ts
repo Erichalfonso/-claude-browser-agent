@@ -25,18 +25,33 @@ const state: AgentState = {
   actionHistory: []
 };
 
+// Set side panel behavior on install
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+});
+
 // Open side panel when extension icon is clicked (tab-specific)
 chrome.action.onClicked.addListener(async (tab) => {
   if (!tab.id) return;
 
-  // Open side panel for this specific tab only
-  await chrome.sidePanel.open({ tabId: tab.id });
-
-  // Set the panel to be tab-specific (not global)
+  // Enable side panel for this specific tab
   await chrome.sidePanel.setOptions({
     tabId: tab.id,
     path: 'popup/popup.html',
     enabled: true
+  });
+
+  // Open it
+  await chrome.sidePanel.open({ tabId: tab.id });
+});
+
+// Disable side panel when tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.sidePanel.setOptions({
+    tabId: tabId,
+    enabled: false
+  }).catch(() => {
+    // Tab already removed, ignore error
   });
 });
 
