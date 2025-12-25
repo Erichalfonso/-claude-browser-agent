@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Claude Browser Agent",
+  "version": "1.0.0",
+  "description": "AI-powered browser automation using Claude's vision and reasoning",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "storage",
+    "nativeMessaging",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Claude Browser Agent"
+  },
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["content/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
