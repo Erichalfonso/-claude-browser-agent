@@ -1,28 +1,32 @@
 // Background service worker - agent brain
-// Coordinates screenshots, Claude API calls, and action execution
+// Coordinates screenshots, backend API calls, and action execution
 
-import Anthropic from '@anthropic-ai/sdk';
+const BACKEND_URL = 'http://localhost:8000';
 
 interface AgentState {
   running: boolean;
   goal: string | null;
-  apiKey: string | null;
+  authToken: string | null;
+  workflowId: number | null;
   tabId: number | null;
   messageHistory: any[];
   lastMouseX: number;
   lastMouseY: number;
   actionHistory: Array<{ action: string; selector?: string; result: string }>;
+  currentStep: number;
 }
 
 const state: AgentState = {
   running: false,
   goal: null,
-  apiKey: null,
+  authToken: null,
+  workflowId: null,
   tabId: null,
   messageHistory: [],
   lastMouseX: 0,
   lastMouseY: 0,
-  actionHistory: []
+  actionHistory: [],
+  currentStep: 0
 };
 
 // Set side panel behavior on install
@@ -60,7 +64,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   (async () => {
     try {
       if (request.type === 'run_agent') {
-        await runAgent(request.goal, request.apiKey);
+        await runAgent(request.goal, request.authToken);
         sendResponse({ success: true });
       }
       else if (request.type === 'stop_agent') {
@@ -82,18 +86,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true; // Keep channel open for async
 });
 
-async function runAgent(goal: string, apiKey: string) {
+async function runAgent(goal: string, authToken: string) {
   if (state.running) {
     throw new Error('Agent is already running');
   }
 
   state.running = true;
   state.goal = goal;
-  state.apiKey = apiKey;
+  state.authToken = authToken;
   state.messageHistory = [];
   state.lastMouseX = 0;
   state.lastMouseY = 0;
   state.actionHistory = [];
+  state.currentStep = 0;
 
   // Get current tab
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -107,6 +112,33 @@ async function runAgent(goal: string, apiKey: string) {
   }
 
   state.tabId = tab.id;
+
+  // Create workflow on backend
+  updateStatus('Creating workflow...', 'Setting up AI learning mode');
+  try {
+    const workflowResponse = await fetch(`${BACKEND_URL}/api/workflows`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: `${goal.substring(0, 50)}...`,
+        description: goal,
+        website: tab.url
+      })
+    });
+
+    const workflowData = await workflowResponse.json();
+    if (!workflowData.success) {
+      throw new Error(workflowData.error || 'Failed to create workflow');
+    }
+
+    state.workflowId = workflowData.data.workflow.id;
+    updateStatus('Workflow created', `ID: ${state.workflowId}`);
+  } catch (error) {
+    throw new Error(`Failed to create workflow: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   // Ensure content script is loaded
   try {
@@ -137,12 +169,6 @@ async function runAgent(goal: string, apiKey: string) {
   }
 
   try {
-    // Initialize Claude client with browser-safe headers
-    const client = new Anthropic({
-      apiKey,
-      dangerouslyAllowBrowser: true
-    });
-
     // Agent loop
     let iteration = 0;
     const MAX_ITERATIONS = 20;
@@ -158,46 +184,37 @@ async function runAgent(goal: string, apiKey: string) {
       const pageInfo = await sendMessageToTab(state.tabId, { type: 'get_page_info' });
       const domInspection = await sendMessageToTab(state.tabId, { type: 'inspect_page' });
 
-      // Call Claude
+      // Call backend AI decision endpoint
       updateStatus('Thinking...', 'Analyzing page and reasoning about next action');
 
-      const messages: any[] = [
-        ...state.messageHistory,
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/png',
-                data: screenshot.split(',')[1] // Remove data:image/png;base64, prefix
-              }
-            },
-            {
-              type: 'text',
-              text: buildPrompt(goal, pageInfo, domInspection, iteration)
-            }
-          ]
-        }
-      ];
-
-      // Use standard Messages API with Opus 4.5 + Extended Thinking (with retry logic)
       let response;
       let retries = 0;
       const MAX_RETRIES = 3;
 
       while (retries < MAX_RETRIES) {
         try {
-          response = await client.messages.create({
-            model: 'claude-opus-4-5-20251101',
-            max_tokens: 8192,
-            thinking: {
-              type: 'enabled',
-              budget_tokens: 5000
+          const aiResponse = await fetch(`${BACKEND_URL}/api/extension/ai-decision`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${state.authToken}`,
+              'Content-Type': 'application/json'
             },
-            messages
+            body: JSON.stringify({
+              screenshot,
+              goal,
+              currentUrl: pageInfo.data.url,
+              availableElements: domInspection.data?.elements || [],
+              iteration,
+              actionHistory: state.actionHistory.slice(-5)
+            })
           });
+
+          const aiData = await aiResponse.json();
+          if (!aiData.success) {
+            throw new Error(aiData.error || 'AI decision failed');
+          }
+
+          response = aiData.data;
           break; // Success, exit retry loop
         } catch (apiError: any) {
           retries++;
@@ -218,18 +235,8 @@ async function runAgent(goal: string, apiKey: string) {
         throw new Error('No response from API');
       }
 
-      let textResponse = '';
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          textResponse += block.text;
-        }
-      }
-
-      // Add to history
-      state.messageHistory.push(
-        { role: 'user', content: messages[messages.length - 1].content },
-        { role: 'assistant', content: textResponse }
-      );
+      const textResponse = response.response || '';
+      const action = response.action || null;
 
       // Send text response to popup and overlay for visibility
       if (textResponse) {
@@ -248,15 +255,14 @@ async function runAgent(goal: string, apiKey: string) {
 
       // Check if task is done
       if (textResponse.toLowerCase().includes('task complete') ||
-          textResponse.toLowerCase().includes('finished')) {
+          textResponse.toLowerCase().includes('finished') ||
+          !action) {
         break;
       }
 
-      // Extract and execute action from response
+      // Execute action
       let actionSuccess = false;
       try {
-        const action = extractAction(textResponse);
-
         // Show reasoning in overlay
         if (action.reasoning) {
           sendMessageToTab(state.tabId, {
@@ -275,7 +281,25 @@ async function runAgent(goal: string, apiKey: string) {
         await executeActionOnTab(state.tabId, action);
         actionSuccess = true;
 
-        // Record action in history
+        // Record action to backend
+        try {
+          await fetch(`${BACKEND_URL}/api/extension/record-action`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${state.authToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              workflowId: state.workflowId,
+              action
+            })
+          });
+        } catch (recordError) {
+          console.error('Failed to record action:', recordError);
+          // Continue anyway - action was executed successfully
+        }
+
+        // Record action in local history
         state.actionHistory.push({
           action: action.action,
           selector: action.selector,
@@ -285,53 +309,26 @@ async function runAgent(goal: string, apiKey: string) {
           state.actionHistory.shift(); // Keep last 10
         }
 
-        // Send success feedback
-        state.messageHistory.push({
-          role: 'user',
-          content: 'Action executed successfully. Continue with next step.'
-        });
+        state.currentStep++;
 
       } catch (error) {
-        // Fetch console logs for debugging context
-        let errorContext = '';
-        try {
-          const errorLogs = await sendMessageToTab(state.tabId, { type: 'get_error_logs' });
-          if (errorLogs.data && errorLogs.data.length > 0) {
-            errorContext = '\n\nConsole errors/warnings from page:\n' +
-              errorLogs.data.map((log: any) =>
-                `[${log.type}] ${log.message}`
-              ).join('\n');
-          }
-        } catch (logError) {
-          // Ignore if we can't fetch logs
-        }
-
-        const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}${errorContext}`;
+        const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`;
         console.log('Action failed:', error);
 
-        // Record failed action in history
-        try {
-          const failedAction = extractAction(textResponse);
-          state.actionHistory.push({
-            action: failedAction.action || 'unknown',
-            selector: failedAction.selector,
-            result: `failed: ${error instanceof Error ? error.message : String(error)}`
-          });
-        } catch (parseError) {
-          state.actionHistory.push({
-            action: 'unknown',
-            selector: undefined,
-            result: `failed: ${error instanceof Error ? error.message : String(error)}`
-          });
-        }
+        // Record failed action in local history
+        state.actionHistory.push({
+          action: action?.action || 'unknown',
+          selector: action?.selector,
+          result: `failed: ${error instanceof Error ? error.message : String(error)}`
+        });
         if (state.actionHistory.length > 10) {
           state.actionHistory.shift();
         }
 
-        // Send error feedback to Claude
-        state.messageHistory.push({
-          role: 'user',
-          content: errorMessage + '\n\nPlease try a different approach.'
+        // Send error to popup
+        sendMessageToPopup({
+          type: 'agent_message',
+          content: errorMessage
         });
 
         iteration--; // Don't count failed attempts

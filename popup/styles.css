@@ -309,3 +309,134 @@
   background: #ccc;
   cursor: not-allowed;
 }
+
+/* Authentication Styles */
+.auth-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.auth-container h1 {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.auth-subtitle {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  opacity: 0.9;
+  text-align: center;
+}
+
+.auth-form {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 320px;
+}
+
+.auth-form h2 {
+  margin: 0 0 20px 0;
+  font-size: 20px;
+  color: #333;
+  text-align: center;
+}
+
+.auth-form input {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 8px;
+  background: #667eea;
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.auth-submit-btn:hover {
+  background: #5568d3;
+}
+
+.auth-toggle {
+  margin: 16px 0 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: #666;
+}
+
+.auth-toggle a {
+  color: #667eea;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-toggle a:hover {
+  text-decoration: underline;
+}
+
+.auth-messages {
+  margin-top: 16px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.auth-messages .message {
+  margin-bottom: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+  animation: slideIn 0.2s ease-out;
+}
+
+/* User Info in Settings */
+.user-info {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: #f5f5f5;
+  border-radius: 6px;
+}
+
+.user-info p {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.logout-btn {
+  background: #dc3545 !important;
+}
+
+.logout-btn:hover {
+  background: #c82333 !important;
+}
