@@ -18,8 +18,23 @@ export interface Workflow {
   recordedActions: any[] | null;
   fieldMappings: Record<string, string> | null;
   successIndicators: any | null;
+  // Scheduling fields
+  isScheduled: boolean;
+  scheduleStartTime: string | null;
+  scheduleEndTime: string | null;
+  scheduleDays: string[] | null;
+  scheduleTimezone: string | null;
+  lastScheduledRun: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ScheduleSettings {
+  isScheduled: boolean;
+  scheduleStartTime: string;
+  scheduleEndTime: string;
+  scheduleDays: string[];
+  scheduleTimezone: string;
 }
 
 export interface Listing {

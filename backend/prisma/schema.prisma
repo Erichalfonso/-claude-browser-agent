@@ -46,6 +46,14 @@ model Workflow {
   // Success criteria
   successIndicators Json? @map("success_indicators") // How to know upload succeeded
 
+  // Scheduling
+  isScheduled       Boolean   @default(false) @map("is_scheduled")
+  scheduleStartTime String?   @map("schedule_start_time") // "09:00"
+  scheduleEndTime   String?   @map("schedule_end_time")   // "17:00"
+  scheduleDays      Json?     @map("schedule_days")       // ["monday", "tuesday", ...]
+  scheduleTimezone  String?   @default("America/New_York") @map("schedule_timezone")
+  lastScheduledRun  DateTime? @map("last_scheduled_run")
+
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

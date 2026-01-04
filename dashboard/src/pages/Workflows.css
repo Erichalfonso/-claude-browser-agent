@@ -234,3 +234,95 @@
   color: #9ca3af;
   cursor: not-allowed;
 }
+
+.btn-schedule {
+  background: white;
+  color: #6366f1;
+  border: 1px solid #6366f1;
+}
+
+.btn-schedule:hover {
+  background: #eef2ff;
+}
+
+/* Workflow Controls Section */
+.workflow-controls {
+  margin: 16px 0 8px 0;
+  padding: 12px 0;
+  border-top: 1px solid #f3f4f6;
+}
+
+.activation-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.activation-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.activation-toggle input[type='checkbox'] {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  width: 48px;
+  height: 24px;
+  background: #d1d5db;
+  border-radius: 12px;
+  transition: all 0.3s;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  top: 2px;
+  left: 2px;
+  transition: all 0.3s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.activation-toggle input[type='checkbox']:checked + .toggle-slider {
+  background: #10b981;
+}
+
+.activation-toggle input[type='checkbox']:checked + .toggle-slider::before {
+  left: 26px;
+}
+
+.toggle-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.schedule-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #f0fdf4;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #166534;
+}
+
+.schedule-icon {
+  font-size: 14px;
+}
+
+.schedule-text {
+  font-weight: 500;
+}

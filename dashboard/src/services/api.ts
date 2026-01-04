@@ -1,6 +1,6 @@
 // API service for backend communication
 
-import type { User, Workflow, Listing, AutomationRun, ApiResponse } from '../types';
+import type { User, Workflow, Listing, AutomationRun, ApiResponse, ScheduleSettings } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -16,9 +16,9 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const token = getAuthToken();
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(options.headers as Record<string, string>),
   };
 
   if (token) {
@@ -85,6 +85,12 @@ export const workflowsApi = {
   finalize: (id: number) =>
     apiRequest<{ workflow: Workflow }>(`/api/workflows/${id}/finalize`, {
       method: 'POST',
+    }),
+
+  updateSchedule: (id: number, schedule: ScheduleSettings) =>
+    apiRequest<{ workflow: Workflow }>(`/api/workflows/${id}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify(schedule),
     }),
 };
 

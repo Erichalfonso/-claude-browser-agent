@@ -1,16 +1,19 @@
 // Workflows list page - shows all workflows with run buttons
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { workflowsApi } from '../services/api';
-import type { Workflow } from '../types';
+import type { Workflow, ScheduleSettings } from '../types';
+import ScheduleModal from '../components/ScheduleModal';
 import './Workflows.css';
 
 export default function Workflows() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -45,6 +48,37 @@ export default function Workflows() {
       setWorkflows(workflows.filter(w => w.id !== id));
     } else {
       alert(response.error || 'Failed to delete workflow');
+    }
+  };
+
+  const handleToggleActive = async (workflow: Workflow) => {
+    const newStatus = workflow.status === 'active' ? 'ready' : 'active';
+
+    const response = await workflowsApi.update(workflow.id, { status: newStatus });
+    if (response.success && response.data) {
+      setWorkflows(workflows.map(w =>
+        w.id === workflow.id ? response.data!.workflow : w
+      ));
+    } else {
+      alert(response.error || 'Failed to update workflow status');
+    }
+  };
+
+  const handleOpenSchedule = (workflow: Workflow) => {
+    setSelectedWorkflow(workflow);
+    setIsScheduleModalOpen(true);
+  };
+
+  const handleSaveSchedule = async (schedule: ScheduleSettings) => {
+    if (!selectedWorkflow) return;
+
+    const response = await workflowsApi.updateSchedule(selectedWorkflow.id, schedule);
+    if (response.success && response.data) {
+      setWorkflows(workflows.map(w =>
+        w.id === selectedWorkflow.id ? response.data!.workflow : w
+      ));
+    } else {
+      throw new Error(response.error || 'Failed to save schedule');
     }
   };
 
@@ -129,14 +163,48 @@ export default function Workflows() {
                     )}
                   </div>
 
+                  <div className="workflow-controls">
+                    {isReady && (
+                      <div className="activation-section">
+                        <label className="activation-toggle">
+                          <input
+                            type="checkbox"
+                            checked={workflow.status === 'active'}
+                            onChange={() => handleToggleActive(workflow)}
+                          />
+                          <span className="toggle-slider"></span>
+                          <span className="toggle-label">
+                            {workflow.status === 'active' ? 'Active' : 'Inactive'}
+                          </span>
+                        </label>
+                        {workflow.isScheduled && (
+                          <div className="schedule-info">
+                            <span className="schedule-icon">⏰</span>
+                            <span className="schedule-text">
+                              {workflow.scheduleStartTime} - {workflow.scheduleEndTime}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="workflow-actions">
                     {isReady ? (
-                      <button
-                        onClick={() => handleRunWorkflow(workflow.id)}
-                        className="btn-primary"
-                      >
-                        Run Workflow
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleRunWorkflow(workflow.id)}
+                          className="btn-primary"
+                        >
+                          Run Now
+                        </button>
+                        <button
+                          onClick={() => handleOpenSchedule(workflow)}
+                          className="btn-schedule"
+                        >
+                          Schedule
+                        </button>
+                      </>
                     ) : (
                       <button className="btn-disabled" disabled>
                         {workflow.status === 'learning'
@@ -157,6 +225,15 @@ export default function Workflows() {
           </div>
         )}
       </main>
+
+      {selectedWorkflow && (
+        <ScheduleModal
+          workflow={selectedWorkflow}
+          isOpen={isScheduleModalOpen}
+          onClose={() => setIsScheduleModalOpen(false)}
+          onSave={handleSaveSchedule}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 // Automation status page - shows real-time progress
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { automationApi } from '../services/api';
 import type { AutomationRun, Listing } from '../types';

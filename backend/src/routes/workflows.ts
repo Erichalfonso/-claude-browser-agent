@@ -265,4 +265,73 @@ router.post('/:id/finalize', async (req: AuthRequest, res) => {
   }
 });
 
+// POST /api/workflows/:id/schedule - Update workflow schedule settings
+router.post('/:id/schedule', async (req: AuthRequest, res) => {
+  try {
+    const workflowId = parseInt(req.params.id);
+    const {
+      isScheduled,
+      scheduleStartTime,
+      scheduleEndTime,
+      scheduleDays,
+      scheduleTimezone
+    } = req.body;
+
+    // Verify ownership
+    const workflow = await prisma.workflow.findFirst({
+      where: {
+        id: workflowId,
+        userId: req.userId
+      }
+    });
+
+    if (!workflow) {
+      return res.status(404).json({
+        success: false,
+        error: 'Workflow not found'
+      });
+    }
+
+    // Validate schedule data
+    if (isScheduled) {
+      if (!scheduleStartTime || !scheduleEndTime) {
+        return res.status(400).json({
+          success: false,
+          error: 'Start time and end time are required when scheduling is enabled'
+        });
+      }
+
+      if (!scheduleDays || !Array.isArray(scheduleDays) || scheduleDays.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'At least one day must be selected'
+        });
+      }
+    }
+
+    // Update schedule settings
+    const updated = await prisma.workflow.update({
+      where: { id: workflowId },
+      data: {
+        isScheduled: isScheduled !== undefined ? isScheduled : workflow.isScheduled,
+        scheduleStartTime: scheduleStartTime || workflow.scheduleStartTime,
+        scheduleEndTime: scheduleEndTime || workflow.scheduleEndTime,
+        scheduleDays: scheduleDays || workflow.scheduleDays,
+        scheduleTimezone: scheduleTimezone || workflow.scheduleTimezone
+      }
+    });
+
+    res.json({
+      success: true,
+      data: { workflow: updated },
+      message: isScheduled ? 'Workflow schedule activated' : 'Workflow schedule deactivated'
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to update workflow schedule'
+    });
+  }
+});
+
 export default router;
