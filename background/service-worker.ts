@@ -1,7 +1,9 @@
 // Background service worker - agent brain
 // Coordinates screenshots, backend API calls, and action execution
 
-const BACKEND_URL = 'http://localhost:8000';
+import { CONFIG } from '../config';
+
+const BACKEND_URL = CONFIG.BACKEND_URL;
 
 interface AgentState {
   running: boolean;
@@ -235,8 +237,16 @@ async function runAgent(goal: string, authToken: string) {
         throw new Error('No response from API');
       }
 
+      console.log('AI Response:', JSON.stringify(response, null, 2));
+
       const textResponse = response.response || '';
       const action = response.action || null;
+
+      // Debug: log what action we got
+      console.log('Parsed action:', action);
+      if (!action || !action.action) {
+        console.log('WARNING: No valid action in response');
+      }
 
       // Send text response to popup and overlay for visibility
       if (textResponse) {
@@ -272,14 +282,16 @@ async function runAgent(goal: string, authToken: string) {
           }).catch(() => {});
         }
 
+        console.log(`Executing action: ${action.action} on ${action.selector || 'N/A'}`);
         updateStatus(
           `Executing: ${action.action}`,
-          action.reasoning || ''
+          action.selector || action.reasoning || ''
         );
 
         // Execute the action
         await executeActionOnTab(state.tabId, action);
         actionSuccess = true;
+        console.log('Action executed successfully');
 
         // Record action to backend
         try {
@@ -312,8 +324,9 @@ async function runAgent(goal: string, authToken: string) {
         state.currentStep++;
 
       } catch (error) {
-        const errorMessage = `Error: ${error instanceof Error ? error.message : String(error)}`;
-        console.log('Action failed:', error);
+        const errorMessage = `Action failed: ${error instanceof Error ? error.message : String(error)}`;
+        console.error('Action execution failed:', error);
+        console.error('Failed action was:', JSON.stringify(action, null, 2));
 
         // Record failed action in local history
         state.actionHistory.push({
@@ -325,10 +338,10 @@ async function runAgent(goal: string, authToken: string) {
           state.actionHistory.shift();
         }
 
-        // Send error to popup
+        // Send error to popup with more detail
         sendMessageToPopup({
           type: 'agent_message',
-          content: errorMessage
+          content: `❌ ${errorMessage} (tried: ${action?.action} on ${action?.selector || 'unknown'})`
         });
 
         iteration--; // Don't count failed attempts
