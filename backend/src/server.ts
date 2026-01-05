@@ -24,13 +24,12 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '50mb' })); // Increased limit for base64 images
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// CORS configuration
+// CORS configuration - allow all origins for extension compatibility
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    process.env.EXTENSION_ID || 'chrome-extension://*'
-  ],
-  credentials: true
+  origin: true, // Allow all origins (extension IDs are dynamic)
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Rate limiting
