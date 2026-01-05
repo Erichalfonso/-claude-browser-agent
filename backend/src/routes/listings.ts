@@ -234,7 +234,7 @@ router.post('/:id/retry', async (req: AuthRequest, res) => {
       where: { id: listingId },
       data: {
         uploadStatus: 'pending',
-        uploadResult: Prisma.JsonNull
+        uploadResult: null
       }
     });
 

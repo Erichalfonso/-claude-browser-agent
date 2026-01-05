@@ -100,7 +100,7 @@ router.post('/start', async (req: AuthRequest, res) => {
       data: {
         automationRun,
         listingCount: listings.length,
-        listingIds: listings.map(l => l.id)
+        listingIds: listings.map((l: any) => l.id)
       },
       message: `Started automation run for ${listings.length} listings`
     });
