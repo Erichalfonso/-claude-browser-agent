@@ -1,0 +1,122 @@
+import React, { useState, useEffect } from 'react';
+import Settings from './Settings';
+import SyncPanel from './SyncPanel';
+import ResultsLog from './ResultsLog';
+import type { AppSettings, SyncSession } from '../mls/types';
+
+type TabType = 'sync' | 'results' | 'settings';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<TabType>('sync');
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [syncHistory, setSyncHistory] = useState<SyncSession[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [currentSession, setCurrentSession] = useState<SyncSession | null>(null);
+
+  // Load settings and history on mount
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [loadedSettings, history] = await Promise.all([
+          window.electronAPI.getSettings(),
+          window.electronAPI.getSyncHistory(),
+        ]);
+        setSettings(loadedSettings);
+        setSyncHistory(history);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadData();
+
+    // Listen for sync trigger from tray
+    window.electronAPI.onTriggerSync(() => {
+      setActiveTab('sync');
+      // TODO: Trigger sync
+    });
+
+    // Listen for sync completion
+    window.electronAPI.onSyncComplete((session) => {
+      setSyncHistory((prev) => [session, ...prev]);
+      setCurrentSession(null);
+    });
+  }, []);
+
+  const handleSaveSettings = async (newSettings: AppSettings) => {
+    await window.electronAPI.saveSettings(newSettings);
+    setSettings(newSettings);
+  };
+
+  const isConfigured = settings?.mlsCredentials && settings?.vlsCredentials;
+
+  if (isLoading) {
+    return (
+      <div className="app loading">
+        <div className="spinner"></div>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <h1>🏠 MLS VLS Syndicator</h1>
+        <nav className="tabs">
+          <button
+            className={`tab ${activeTab === 'sync' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sync')}
+          >
+            Sync
+          </button>
+          <button
+            className={`tab ${activeTab === 'results' ? 'active' : ''}`}
+            onClick={() => setActiveTab('results')}
+          >
+            History
+          </button>
+          <button
+            className={`tab ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Settings
+          </button>
+        </nav>
+      </header>
+
+      <main className="app-content">
+        {activeTab === 'sync' && (
+          <SyncPanel
+            settings={settings!}
+            isConfigured={!!isConfigured}
+            currentSession={currentSession}
+            onGoToSettings={() => setActiveTab('settings')}
+          />
+        )}
+
+        {activeTab === 'results' && (
+          <ResultsLog
+            sessions={syncHistory}
+            onClearHistory={async () => {
+              await window.electronAPI.clearSyncHistory();
+              setSyncHistory([]);
+            }}
+          />
+        )}
+
+        {activeTab === 'settings' && (
+          <Settings settings={settings!} onSave={handleSaveSettings} />
+        )}
+      </main>
+
+      <footer className="app-footer">
+        <span>MLS VLS Syndicator v1.0.0</span>
+        {settings?.lastSyncTime && (
+          <span>Last sync: {new Date(settings.lastSyncTime).toLocaleString()}</span>
+        )}
+      </footer>
+    </div>
+  );
+}

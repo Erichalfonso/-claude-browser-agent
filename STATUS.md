@@ -1,128 +1,172 @@
-# Claude Browser Agent - Project Status
+# MLS → VLS Homes Syndicator
 
-## Last Updated: January 5, 2026
+## Project Status: In Development
 
----
-
-## COMPLETED
-
-### Backend (Railway Deployed)
-- [x] Express server with authentication (JWT)
-- [x] User signup/login endpoints
-- [x] Workflow CRUD endpoints
-- [x] Listings management endpoints
-- [x] AI decision endpoint (`/api/extension/ai-decision`) - calls Claude API
-- [x] Action recording endpoint for learning mode
-- [x] Deterministic playback endpoint (`/api/extension/get-next-action`)
-- [x] Workflow scheduling system with cron jobs
-- [x] CORS configured for Chrome extension
-- [x] Deployed to Railway: `https://claude-browser-agent-production.up.railway.app`
-
-### Chrome Extension
-- [x] Manifest V3 setup with side panel
-- [x] Popup UI with login/signup
-- [x] Chat interface to give commands to AI
-- [x] Screenshot capture and send to backend
-- [x] DOM inspection for interactive elements
-- [x] Action execution (click, type, scroll, navigate, key_press)
-- [x] Status overlay on page during automation
-- [x] Hot reload for development (`npm run dev`)
-- [x] Centralized config (`config.ts`) for backend URL
-
-### AI Agent
-- [x] Vision-based reasoning with Claude Sonnet
-- [x] Action history tracking to prevent loops
-- [x] Retry logic with exponential backoff
-- [x] Error handling and reporting to popup
-
-### Dashboard (Web App)
-- [x] React + Vite setup
-- [x] Login/authentication
-- [x] Workflows list page with status badges
-- [x] Run workflow page
-- [x] Schedule modal for automation timing
-- [x] Connected to Railway backend
+**Last Updated:** January 7, 2025
 
 ---
 
-## IN PROGRESS
+## Overview
 
-### Extension Workflow Picker
-- [ ] Add tabs to popup (Chat / Workflows)
-- [ ] Fetch and display saved workflows in extension
-- [ ] "Run" button to execute workflow on current page
-- [ ] Integrate with deterministic playback
+Desktop application that automatically syndicates MLS listings to VLS Homes for a real estate agent. The app fetches listings via MLS API and posts them to VLS Homes using browser automation.
 
 ---
 
-## TODO (Not Started)
+## Architecture
 
-### Deterministic Playback
-- [ ] Execute recorded actions step-by-step
-- [ ] Replace placeholders with listing data
-- [ ] Handle dynamic selectors (elements that change)
-- [ ] Error recovery during playback
-
-### Listings Management
-- [ ] CSV upload in extension (currently dashboard only)
-- [ ] View pending listings in extension
-- [ ] Mark listings as uploaded
-
-### Workflow Learning Improvements
-- [ ] Better selector generation for complex sites
-- [ ] Handle iframes and shadow DOM
-- [ ] Support file uploads during learning
-- [ ] Multi-page workflow support
-
-### Polish & UX
-- [ ] Better error messages
-- [ ] Progress indicators during automation
-- [ ] Workflow editing/tweaking
-- [ ] Duplicate workflow functionality
-
-### Production Readiness
-- [ ] Rate limiting per user
-- [ ] Usage tracking for billing
-- [ ] Stripe integration for payments
-- [ ] Admin dashboard
-
----
-
-## Environment Variables (Railway)
-
-| Variable | Status | Description |
-|----------|--------|-------------|
-| `DATABASE_URL` | Set (auto) | PostgreSQL connection string |
-| `JWT_SECRET` | Required | Secret for signing tokens |
-| `ANTHROPIC_API_KEY` | Required | Claude API key (sk-ant-api03-...) |
-| `STRIPE_SECRET_KEY` | Optional | For payments |
-| `STRIPE_WEBHOOK_SECRET` | Optional | For Stripe webhooks |
-
----
-
-## Quick Start
-
-```bash
-# Extension development
-cd claude-browser-agent
-npm install
-npm run dev          # Hot reload enabled
-# Load dist/ folder in chrome://extensions
-
-# Dashboard
-cd dashboard
-npm install
-npm run dev          # http://localhost:5173
-
-# Backend (local)
-cd backend
-npm install
-npm run dev          # http://localhost:3000
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   MLS API       │────▶│  Sync Engine     │────▶│  VLS Homes      │
+│   (RESO)        │     │  (Orchestrator)  │     │  (Puppeteer)    │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+                               │
+                               ▼
+                        ┌──────────────────┐
+                        │  Electron App    │
+                        │  (Desktop UI)    │
+                        └──────────────────┘
 ```
 
 ---
 
-## Current Issue Being Worked On
+## Component Status
 
-The AI agent is now properly executing actions and tracking history to avoid loops.
-Next step: Add workflow picker tab to the extension popup so users can select and run saved workflows directly from the extension.
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Electron Shell** | ✅ Complete | Window, tray icon, menus, IPC |
+| **React UI** | ✅ Complete | Settings, sync panel, history log |
+| **Settings Storage** | ✅ Complete | Encrypted credential storage |
+| **Sync Engine** | ⏳ Skeleton | Orchestration logic ready, needs MLS/VLS |
+| **Image Downloader** | ✅ Complete | Downloads with retry & cleanup |
+| **Session Logger** | ✅ Complete | Logs sync history to files |
+| **MLS API Client** | 🔲 Pending | Waiting for API credentials |
+| **VLS Automation** | 🔲 Pending | Waiting for site access |
+
+---
+
+## File Structure
+
+```
+mls-vls-syndicator/
+├── src/
+│   ├── main.ts                 # Electron main process
+│   ├── preload.ts              # Secure IPC bridge
+│   ├── index.html              # HTML entry
+│   │
+│   ├── ui/                     # React components
+│   │   ├── App.tsx             # Main app with tabs
+│   │   ├── Settings.tsx        # Credentials & search criteria
+│   │   ├── SyncPanel.tsx       # Sync button & progress
+│   │   ├── ResultsLog.tsx      # History viewer
+│   │   └── styles.css          # Dark theme
+│   │
+│   ├── mls/                    # MLS data handling
+│   │   ├── types.ts            # TypeScript interfaces
+│   │   ├── image-downloader.ts # Image fetching
+│   │   └── api-client.ts       # [TODO] RESO API client
+│   │
+│   ├── vls/                    # VLS Homes automation
+│   │   ├── poster.ts           # [TODO] Puppeteer script
+│   │   └── field-mapping.ts    # [TODO] MLS → VLS mapping
+│   │
+│   └── sync/                   # Sync orchestration
+│       ├── engine.ts           # Main sync logic
+│       └── logger.ts           # Session logging
+│
+├── assets/                     # App icons
+├── temp/                       # Downloaded images (temp)
+├── logs/                       # Sync session logs
+│
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+└── STATUS.md                   # This file
+```
+
+---
+
+## Tech Stack
+
+- **Electron** - Desktop app framework
+- **React** - UI components
+- **Vite** - Build system
+- **TypeScript** - Type safety
+- **Puppeteer** - Browser automation (for VLS)
+- **electron-store** - Encrypted settings storage
+
+---
+
+## Next Steps
+
+### Immediate (waiting on external dependencies)
+
+1. **Get MLS API access**
+   - Contact mom's MLS (Stellar MLS or other Florida MLS)
+   - Request RESO Web API credentials
+   - Get OAuth2 client ID/secret
+
+2. **Explore VLS Homes**
+   - Get login credentials
+   - Map the "Add Listing" form fields
+   - Build Puppeteer automation
+
+### After dependencies are available
+
+3. Build MLS API client (`src/mls/api-client.ts`)
+4. Build VLS poster (`src/vls/poster.ts`)
+5. Connect all pieces in sync engine
+6. Package as Windows installer (.exe)
+7. Test with real data
+
+---
+
+## User Flow (Target)
+
+### First Time Setup
+```
+1. Install app (double-click .exe)
+2. Enter MLS API credentials
+3. Enter VLS Homes login
+4. Set search criteria (location, price, beds)
+5. Save
+```
+
+### Regular Use
+```
+1. Open app
+2. Click "Sync Now"
+3. App fetches listings from MLS
+4. App posts each to VLS Homes
+5. See results (posted/skipped/failed)
+```
+
+### Automated Mode
+```
+Enable auto-sync → App syncs every X hours in background
+```
+
+---
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development
+npm run dev
+
+# Build for production
+npm run build
+
+# Package as installer
+npm run dist
+```
+
+---
+
+## Notes
+
+- Project was restructured from a Chrome extension to a standalone Electron app
+- Previous backend/extension code archived in git history
+- Focus is on simplicity for non-technical end user (60-year-old real estate agent)

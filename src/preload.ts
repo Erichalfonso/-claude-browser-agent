@@ -1,0 +1,76 @@
+/**
+ * Preload Script
+ *
+ * Exposes safe APIs to the renderer process
+ */
+
+import { contextBridge, ipcRenderer } from 'electron';
+import type { AppSettings, SyncSession } from './mls/types';
+
+// Expose protected methods to renderer
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Settings
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings: AppSettings): Promise<void> =>
+    ipcRenderer.invoke('save-settings', settings),
+
+  // Sync history
+  getSyncHistory: (): Promise<SyncSession[]> => ipcRenderer.invoke('get-sync-history'),
+  addSyncSession: (session: SyncSession): Promise<void> =>
+    ipcRenderer.invoke('add-sync-session', session),
+  clearSyncHistory: (): Promise<void> => ipcRenderer.invoke('clear-sync-history'),
+
+  // Dialogs
+  selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('select-directory'),
+
+  // Notifications
+  showNotification: (title: string, body: string): Promise<void> =>
+    ipcRenderer.invoke('show-notification', title, body),
+
+  // App info
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
+
+  // Sync events (from main to renderer)
+  onTriggerSync: (callback: () => void): void => {
+    ipcRenderer.on('trigger-sync', callback);
+  },
+
+  // Sync progress events (renderer will use these to update UI)
+  onSyncProgress: (
+    callback: (progress: { current: number; total: number; address: string }) => void
+  ): void => {
+    ipcRenderer.on('sync-progress', (_, progress) => callback(progress));
+  },
+
+  onSyncComplete: (callback: (session: SyncSession) => void): void => {
+    ipcRenderer.on('sync-complete', (_, session) => callback(session));
+  },
+
+  onSyncError: (callback: (error: string) => void): void => {
+    ipcRenderer.on('sync-error', (_, error) => callback(error));
+  },
+});
+
+// Type declaration for TypeScript
+declare global {
+  interface Window {
+    electronAPI: {
+      getSettings: () => Promise<AppSettings>;
+      saveSettings: (settings: AppSettings) => Promise<void>;
+      getSyncHistory: () => Promise<SyncSession[]>;
+      addSyncSession: (session: SyncSession) => Promise<void>;
+      clearSyncHistory: () => Promise<void>;
+      selectDirectory: () => Promise<string | null>;
+      showNotification: (title: string, body: string) => Promise<void>;
+      getAppVersion: () => Promise<string>;
+      openExternal: (url: string) => Promise<void>;
+      onTriggerSync: (callback: () => void) => void;
+      onSyncProgress: (
+        callback: (progress: { current: number; total: number; address: string }) => void
+      ) => void;
+      onSyncComplete: (callback: (session: SyncSession) => void) => void;
+      onSyncError: (callback: (error: string) => void) => void;
+    };
+  }
+}

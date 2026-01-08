@@ -1,9 +1,0 @@
-{
-  "name": "com.claude.browser_agent",
-  "description": "Native messaging host for Claude Browser Agent",
-  "path": "C:\\Users\\erich\\claude-browser-agent\\native-host\\host.py",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://EXTENSION_ID_GOES_HERE/"
-  ]
-}
