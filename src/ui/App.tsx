@@ -49,7 +49,8 @@ export default function App() {
     setSettings(newSettings);
   };
 
-  const isConfigured = settings?.mlsCredentials && settings?.vlsCredentials;
+  // Only require VLS credentials for now (MLS API not yet available)
+  const isConfigured = settings?.vlsCredentials?.email && settings?.vlsCredentials?.password;
 
   if (isLoading) {
     return (

@@ -8,6 +8,10 @@ import { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage } from 'el
 import * as path from 'path';
 import Store from 'electron-store';
 import type { AppSettings, SyncSession, SyncResult } from './mls/types';
+import { SyncEngine, SyncEngineConfig } from './sync/engine';
+
+// Active sync engine instance
+let activeSyncEngine: SyncEngine | null = null;
 
 // Initialize secure storage
 const store = new Store<{
@@ -187,4 +191,215 @@ ipcMain.handle('get-app-version', async (): Promise<string> => {
 ipcMain.handle('open-external', async (_, url: string): Promise<void> => {
   const { shell } = require('electron');
   shell.openExternal(url);
+});
+
+// ============================================
+// Sync Engine IPC Handlers
+// ============================================
+
+// Start sync
+ipcMain.handle('start-sync', async (): Promise<{ success: boolean; error?: string }> => {
+  if (activeSyncEngine?.isRunning()) {
+    return { success: false, error: 'Sync is already running' };
+  }
+
+  const settings = store.get('settings');
+
+  // Validate credentials
+  if (!settings.vlsCredentials?.email || !settings.vlsCredentials?.password) {
+    return { success: false, error: 'VLS Homes credentials not configured' };
+  }
+
+  try {
+    // Create temp directory for images
+    const tempDir = path.join(app.getPath('temp'), 'mls-vls-syndicator');
+
+    const config: SyncEngineConfig = {
+      mlsCredentials: settings.mlsCredentials || {
+        clientId: '',
+        clientSecret: '',
+        tokenEndpoint: '',
+        apiEndpoint: '',
+        mlsName: '',
+      },
+      vlsCredentials: settings.vlsCredentials,
+      searchCriteria: settings.searchCriteria || {},
+      tempImageDir: tempDir,
+      onProgress: (current, total, address) => {
+        mainWindow?.webContents.send('sync-progress', { current, total, address });
+      },
+      onResult: (result) => {
+        mainWindow?.webContents.send('sync-result', result);
+      },
+    };
+
+    activeSyncEngine = new SyncEngine(config);
+
+    // Run sync in background
+    activeSyncEngine.start()
+      .then(async (session) => {
+        // Save session to history
+        const history = store.get('syncHistory');
+        history.unshift(session);
+        if (history.length > 100) history.pop();
+        store.set('syncHistory', history);
+
+        // Update last sync time
+        settings.lastSyncTime = new Date();
+        store.set('settings', settings);
+
+        // Notify renderer
+        mainWindow?.webContents.send('sync-complete', session);
+
+        // Show notification
+        const { Notification } = require('electron');
+        new Notification({
+          title: 'Sync Complete',
+          body: `Posted: ${session.posted} | Failed: ${session.failed} | Skipped: ${session.skipped}`,
+        }).show();
+
+        // Cleanup
+        await activeSyncEngine?.cleanup();
+        activeSyncEngine = null;
+      })
+      .catch(async (error) => {
+        mainWindow?.webContents.send('sync-error', error.message || 'Unknown error');
+        await activeSyncEngine?.cleanup();
+        activeSyncEngine = null;
+      });
+
+    return { success: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to start sync';
+    return { success: false, error: message };
+  }
+});
+
+// Stop sync
+ipcMain.handle('stop-sync', async (): Promise<void> => {
+  if (activeSyncEngine) {
+    activeSyncEngine.stop();
+  }
+});
+
+// Run test sync with sample listings
+ipcMain.handle('test-sync', async (): Promise<{ success: boolean; error?: string }> => {
+  const settings = store.get('settings');
+
+  if (!settings.vlsCredentials?.email || !settings.vlsCredentials?.password) {
+    return { success: false, error: 'VLS Homes credentials not configured' };
+  }
+
+  const { VLSPoster } = await import('./vls/poster');
+
+  const poster = new VLSPoster({
+    credentials: settings.vlsCredentials,
+    headless: false, // Show browser so we can see what happens
+    slowMo: 100,     // Slow down for visibility
+  });
+
+  // Sample test listing
+  const testListing = {
+    mlsNumber: 'TEST-' + Date.now(),
+    address: '999 Test Boulevard',
+    city: 'Miami',
+    state: 'FL',
+    zip: '33101',
+    price: 299000,
+    bedrooms: 3,
+    bathrooms: 2,
+    sqft: 1500,
+    yearBuilt: 2010,
+    lotSize: 5000,
+    propertyType: 'Single Family',
+    description: 'TEST LISTING - This is a test listing created by MLS-VLS Syndicator. Please delete.',
+    imageUrls: [
+      'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800',
+      'https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800',
+    ],
+    status: 'Active',
+  };
+
+  try {
+    mainWindow?.webContents.send('sync-progress', { current: 0, total: 1, address: 'Logging into VLS Homes...' });
+
+    await poster.init();
+    const loggedIn = await poster.login();
+
+    if (!loggedIn) {
+      await poster.close();
+      return { success: false, error: 'Failed to login to VLS Homes' };
+    }
+
+    mainWindow?.webContents.send('sync-progress', { current: 1, total: 1, address: testListing.address });
+
+    // Download test images first
+    const { ImageDownloader } = await import('./mls/image-downloader');
+    const tempDir = path.join(app.getPath('temp'), 'mls-vls-syndicator');
+    const downloader = new ImageDownloader({ tempDir });
+
+    mainWindow?.webContents.send('sync-progress', { current: 1, total: 1, address: 'Downloading test images...' });
+
+    const imageResults = await downloader.downloadAll(testListing.imageUrls, testListing.mlsNumber);
+    const imagePaths = imageResults.filter(r => r.success).map(r => r.localPath);
+
+    console.log('Downloaded images:', imagePaths);
+
+    mainWindow?.webContents.send('sync-progress', { current: 1, total: 1, address: 'Posting listing to VLS...' });
+
+    // Post the listing
+    const result = await poster.postListing(testListing as any, imagePaths);
+
+    // Cleanup
+    await downloader.cleanup(imageResults);
+    await poster.close();
+
+    if (result.success) {
+      mainWindow?.webContents.send('sync-result', {
+        mlsNumber: testListing.mlsNumber,
+        address: testListing.address,
+        status: 'success',
+        message: `Posted! VLS ID: ${result.vlsListingId}`,
+        timestamp: new Date(),
+      });
+      mainWindow?.webContents.send('sync-complete', { posted: 1, failed: 0, skipped: 0 });
+      return { success: true };
+    } else {
+      mainWindow?.webContents.send('sync-error', result.error || 'Failed to post listing');
+      return { success: false, error: result.error };
+    }
+  } catch (error) {
+    await poster.close();
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    mainWindow?.webContents.send('sync-error', msg);
+    return { success: false, error: msg };
+  }
+});
+
+// Test VLS login (for settings validation)
+ipcMain.handle('test-vls-login', async (_, credentials: { email: string; password: string }): Promise<{ success: boolean; error?: string }> => {
+  const { VLSPoster } = await import('./vls/poster');
+
+  const poster = new VLSPoster({
+    credentials,
+    headless: true,
+  });
+
+  try {
+    await poster.init();
+    const success = await poster.login();
+    await poster.close();
+
+    if (success) {
+      return { success: true };
+    } else {
+      return { success: false, error: 'Login failed - check credentials' };
+    }
+  } catch (error) {
+    await poster.close();
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed'
+    };
+  }
 });

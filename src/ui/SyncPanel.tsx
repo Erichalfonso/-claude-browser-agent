@@ -31,6 +31,11 @@ export default function SyncPanel({
       setProgress(prog);
     });
 
+    // Listen for individual results
+    window.electronAPI.onSyncResult((result) => {
+      setLiveResults((prev) => [...prev, result]);
+    });
+
     window.electronAPI.onSyncError((err) => {
       setError(err);
       setIsSyncing(false);
@@ -40,59 +45,50 @@ export default function SyncPanel({
       setIsSyncing(false);
       setProgress(null);
     });
+
+    // Listen for tray "Sync Now" trigger
+    window.electronAPI.onTriggerSync(() => {
+      handleStartSync();
+    });
   }, []);
 
   const handleStartSync = async () => {
     setIsSyncing(true);
     setError(null);
     setLiveResults([]);
-    setProgress({ current: 0, total: 0, address: 'Connecting to MLS...' });
+    setProgress({ current: 0, total: 0, address: 'Connecting to VLS Homes...' });
 
-    // TODO: Call actual sync engine
-    // For now, simulate progress
-    await simulateSync();
-  };
+    // Call the real sync engine
+    const result = await window.electronAPI.startSync();
 
-  const simulateSync = async () => {
-    // This will be replaced with actual sync logic
-    const mockAddresses = [
-      '123 Main Street, Tampa FL',
-      '456 Oak Avenue, Orlando FL',
-      '789 Palm Drive, Miami FL',
-    ];
-
-    for (let i = 0; i < mockAddresses.length; i++) {
-      await new Promise((r) => setTimeout(r, 1500));
-      setProgress({
-        current: i + 1,
-        total: mockAddresses.length,
-        address: mockAddresses[i],
-      });
-
-      setLiveResults((prev) => [
-        ...prev,
-        {
-          mlsNumber: `MLS${1000 + i}`,
-          address: mockAddresses[i],
-          status: Math.random() > 0.2 ? 'success' : 'skipped',
-          message: Math.random() > 0.2 ? 'Posted successfully' : 'Already exists on VLS',
-          timestamp: new Date(),
-        },
-      ]);
+    if (!result.success) {
+      setError(result.error || 'Failed to start sync');
+      setIsSyncing(false);
+      setProgress(null);
     }
-
-    setIsSyncing(false);
-    setProgress(null);
-    await window.electronAPI.showNotification(
-      'Sync Complete',
-      `Processed ${mockAddresses.length} listings`
-    );
+    // If success, the sync is now running in background
+    // Progress updates will come via IPC events
   };
 
-  const handleStopSync = () => {
-    // TODO: Implement actual stop logic
+  const handleStopSync = async () => {
+    await window.electronAPI.stopSync();
     setIsSyncing(false);
     setProgress(null);
+  };
+
+  const handleTestSync = async () => {
+    setIsSyncing(true);
+    setError(null);
+    setLiveResults([]);
+    setProgress({ current: 0, total: 1, address: 'Starting test sync...' });
+
+    const result = await window.electronAPI.testSync();
+
+    if (!result.success) {
+      setError(result.error || 'Test sync failed');
+      setIsSyncing(false);
+      setProgress(null);
+    }
   };
 
   // Not configured state
@@ -153,13 +149,19 @@ export default function SyncPanel({
         </div>
       )}
 
-      {/* Sync Button */}
+      {/* Sync Buttons */}
       <div className="sync-actions">
         {!isSyncing ? (
-          <button className="btn-sync" onClick={handleStartSync}>
-            <span className="btn-icon">▶</span>
-            Sync Now
-          </button>
+          <>
+            <button className="btn-sync" onClick={handleStartSync}>
+              <span className="btn-icon">▶</span>
+              Sync Now
+            </button>
+            <button className="btn-test" onClick={handleTestSync}>
+              <span className="btn-icon">🧪</span>
+              Test Sync
+            </button>
+          </>
         ) : (
           <button className="btn-stop" onClick={handleStopSync}>
             <span className="btn-icon">⏹</span>

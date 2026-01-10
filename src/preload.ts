@@ -5,7 +5,7 @@
  */
 
 import { contextBridge, ipcRenderer } from 'electron';
-import type { AppSettings, SyncSession } from './mls/types';
+import type { AppSettings, SyncSession, SyncResult } from './mls/types';
 
 // Expose protected methods to renderer
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -31,6 +31,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('get-app-version'),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
 
+  // Sync control
+  startSync: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('start-sync'),
+  stopSync: (): Promise<void> => ipcRenderer.invoke('stop-sync'),
+  testSync: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('test-sync'),
+
+  // Test VLS login
+  testVlsLogin: (credentials: { email: string; password: string }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('test-vls-login', credentials),
+
   // Sync events (from main to renderer)
   onTriggerSync: (callback: () => void): void => {
     ipcRenderer.on('trigger-sync', callback);
@@ -41,6 +52,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     callback: (progress: { current: number; total: number; address: string }) => void
   ): void => {
     ipcRenderer.on('sync-progress', (_, progress) => callback(progress));
+  },
+
+  onSyncResult: (callback: (result: SyncResult) => void): void => {
+    ipcRenderer.on('sync-result', (_, result) => callback(result));
   },
 
   onSyncComplete: (callback: (session: SyncSession) => void): void => {
@@ -65,10 +80,15 @@ declare global {
       showNotification: (title: string, body: string) => Promise<void>;
       getAppVersion: () => Promise<string>;
       openExternal: (url: string) => Promise<void>;
+      startSync: () => Promise<{ success: boolean; error?: string }>;
+      stopSync: () => Promise<void>;
+      testSync: () => Promise<{ success: boolean; error?: string }>;
+      testVlsLogin: (credentials: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
       onTriggerSync: (callback: () => void) => void;
       onSyncProgress: (
         callback: (progress: { current: number; total: number; address: string }) => void
       ) => void;
+      onSyncResult: (callback: (result: SyncResult) => void) => void;
       onSyncComplete: (callback: (session: SyncSession) => void) => void;
       onSyncError: (callback: (error: string) => void) => void;
     };

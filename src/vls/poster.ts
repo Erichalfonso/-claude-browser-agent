@@ -100,35 +100,61 @@ export class VLSPoster {
     try {
       const page = this.page!;
 
-      // Navigate to login page
-      await page.goto(VLS_URLS.login, { waitUntil: 'networkidle2' });
+      console.log('[VLS] Navigating to login page...');
+      await page.goto(VLS_URLS.login, { waitUntil: 'networkidle2', timeout: 60000 });
 
-      // Fill in credentials
+      console.log('[VLS] Filling credentials...');
+      // Clear any existing values first
+      await page.evaluate(() => {
+        const textInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        const passInput = document.querySelector('input[type="password"]') as HTMLInputElement;
+        if (textInput) textInput.value = '';
+        if (passInput) passInput.value = '';
+      });
+
       await page.type('input[type="text"]', this.config.credentials.email);
       await page.type('input[type="password"]', this.config.credentials.password);
 
-      // Click login button
-      await page.click('input[type="submit"]');
+      console.log('[VLS] Clicking login button...');
+      // Click and wait for either navigation or URL change
+      await Promise.all([
+        page.click('input[type="submit"]'),
+        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {
+          console.log('[VLS] Navigation timeout, checking URL...');
+        }),
+      ]);
 
-      // Wait for navigation to secure page
-      await page.waitForNavigation({ waitUntil: 'networkidle2' });
+      // Wait a bit for page to settle
+      await new Promise(r => setTimeout(r, 2000));
 
       // Check if we're on the secure/welcome page
-      const url = page.url();
+      let url = page.url();
+      console.log('[VLS] Current URL after login:', url);
+
       if (url.includes('secure.cfm')) {
-        // Click Continue button
-        await page.click('a.btn, input[type="submit"], button');
-        await page.waitForNavigation({ waitUntil: 'networkidle2' });
+        console.log('[VLS] On secure page, clicking Continue...');
+        // Look for continue button/link
+        const continueBtn = await page.$('a.btn, input[type="submit"], button, a[href*="brokers"]');
+        if (continueBtn) {
+          await Promise.all([
+            continueBtn.click(),
+            page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {}),
+          ]);
+          await new Promise(r => setTimeout(r, 2000));
+        }
       }
 
       // Verify we're logged in (should be on dashboard)
       const currentUrl = page.url();
+      console.log('[VLS] Final URL:', currentUrl);
       this.isLoggedIn = currentUrl.includes('brokers.cfm') ||
-                        currentUrl.includes('members_mobi');
+                        currentUrl.includes('members_mobi') ||
+                        currentUrl.includes('secure.cfm');
 
+      console.log('[VLS] Login successful:', this.isLoggedIn);
       return this.isLoggedIn;
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('[VLS] Login failed:', error);
       return false;
     }
   }
@@ -151,29 +177,70 @@ export class VLSPoster {
       const page = this.page!;
 
       // Step 1: Navigate to Add Listing form
-      await page.goto(VLS_URLS.addListing, { waitUntil: 'networkidle2' });
+      console.log('[VLS] Navigating to Add Listing form...');
+      await page.goto(VLS_URLS.addListing, { waitUntil: 'networkidle2', timeout: 60000 });
+
+      // Wait for page to fully load and log current URL
+      await new Promise(r => setTimeout(r, 2000));
+      console.log('[VLS] Add Listing URL:', page.url());
+
+      // Check if we got an error page
+      const pageContent = await page.content();
+      if (pageContent.includes('500') || pageContent.includes('Error') || pageContent.includes('error')) {
+        console.log('[VLS] Possible error on page, checking...');
+      }
+
+      // Wait for the classification radio buttons to be present
+      try {
+        await page.waitForSelector('input[name="list_class"]', { timeout: 10000 });
+      } catch (e) {
+        console.log('[VLS] Form not found, taking screenshot for debug...');
+        throw new Error('Add Listing form did not load properly');
+      }
 
       // Step 2: Fill Step 1 - Basic Info
+      console.log('[VLS] Filling Step 1 - Basic Info...');
       await this.fillStep1(page, listing);
 
       // Step 3: Click Continue and wait for Step 2
-      await page.click('input[type="submit"]');
-      await page.waitForNavigation({ waitUntil: 'networkidle2' });
+      console.log('[VLS] Submitting Step 1...');
+      await Promise.all([
+        page.click('input[type="submit"]'),
+        page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {
+          console.log('[VLS] Step 1 navigation timeout, continuing...');
+        }),
+      ]);
+      await new Promise(r => setTimeout(r, 2000));
+      console.log('[VLS] Current URL after Step 1:', page.url());
 
       // Step 4: Fill Step 2 - Property Details
+      console.log('[VLS] Filling Step 2 - Property Details...');
       await this.fillStep2(page, listing);
 
       // Step 5: Submit the listing
-      await page.click('input[type="submit"][value="Submit"]');
-      await page.waitForNavigation({ waitUntil: 'networkidle2' });
+      console.log('[VLS] Submitting listing...');
+      const submitBtn = await page.$('input[type="submit"][value="Submit"]') ||
+                        await page.$('input[type="submit"]');
+      if (submitBtn) {
+        await Promise.all([
+          submitBtn.click(),
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }).catch(() => {
+            console.log('[VLS] Submit navigation timeout, continuing...');
+          }),
+        ]);
+      }
+      await new Promise(r => setTimeout(r, 2000));
 
       // Step 6: Extract VLS listing ID from URL
       const currentUrl = page.url();
+      console.log('[VLS] URL after submit:', currentUrl);
       const listingIdMatch = currentUrl.match(/in_listing=(\d+)/);
       const vlsListingId = listingIdMatch ? listingIdMatch[1] : undefined;
+      console.log('[VLS] Listing ID:', vlsListingId);
 
       // Step 7: Upload images if available
       if (vlsListingId && imagePaths.length > 0) {
+        console.log('[VLS] Uploading images...');
         await this.uploadImages(page, vlsListingId, imagePaths);
       }
 
@@ -183,7 +250,7 @@ export class VLSPoster {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Failed to post listing:', message);
+      console.error('[VLS] Failed to post listing:', message);
       return { success: false, error: message };
     }
   }
@@ -192,12 +259,25 @@ export class VLSPoster {
    * Fill Step 1 - Basic listing info
    */
   private async fillStep1(page: Page, listing: MLSListing): Promise<void> {
-    // Select classification (property type)
-    const classification = PROPERTY_TYPE_MAP[listing.propertyType] || 'RES';
-    await page.click(`input[type="radio"][value="${classification}"]`);
+    // Wait for page to fully render
+    await new Promise(r => setTimeout(r, 1000));
 
-    // Select "For Sale" checkbox (assuming sales for now)
-    const forSaleCheckbox = await page.$('input[type="checkbox"][name="forsale"]');
+    console.log('[VLS] Step 1: Selecting classification...');
+    // Select classification (property type) - field name is "list_class"
+    const classification = PROPERTY_TYPE_MAP[listing.propertyType] || 'RES';
+    console.log('[VLS] Step 1: Classification value:', classification);
+
+    // Wait for specific radio button and click using evaluate for reliability
+    const selector = `input[name="list_class"][value="${classification}"]`;
+    await page.waitForSelector(selector, { timeout: 10000 });
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel) as HTMLInputElement;
+      if (el) el.click();
+    }, selector);
+
+    console.log('[VLS] Step 1: Checking For Sale...');
+    // Select "For Sale" checkbox - field name is "for_sale"
+    const forSaleCheckbox = await page.$('input[type="checkbox"][name="for_sale"]');
     if (forSaleCheckbox) {
       const isChecked = await page.evaluate(el => (el as HTMLInputElement).checked, forSaleCheckbox);
       if (!isChecked) {
@@ -207,117 +287,130 @@ export class VLSPoster {
 
     // Parse address components
     const addressParts = this.parseAddress(listing.address);
+    console.log('[VLS] Step 1: Address parts:', addressParts);
 
-    // Fill street number
-    const streetNumInput = await page.$('input[name="street_num"]');
-    if (streetNumInput) {
-      await streetNumInput.type(addressParts.number);
-    }
+    // Fill street number - field name is "in_st_num"
+    console.log('[VLS] Step 1: Filling street number...');
+    await page.waitForSelector('input[name="in_st_num"]', { timeout: 5000 });
+    await page.type('input[name="in_st_num"]', addressParts.number);
 
-    // Fill street name
-    const streetNameInput = await page.$('input[name="street_name"]');
-    if (streetNameInput) {
-      await streetNameInput.type(addressParts.name);
-    }
+    // Fill street name - field name is "in_street"
+    console.log('[VLS] Step 1: Filling street name...');
+    await page.waitForSelector('input[name="in_street"]', { timeout: 5000 });
+    await page.type('input[name="in_street"]', addressParts.name);
 
-    // Fill street type
-    const streetTypeInput = await page.$('input[name="street_type"]');
-    if (streetTypeInput) {
-      await streetTypeInput.type(addressParts.type);
-    }
+    // Fill street type - field name is "in_st_type"
+    console.log('[VLS] Step 1: Filling street type...');
+    await page.waitForSelector('input[name="in_st_type"]', { timeout: 5000 });
+    await page.type('input[name="in_st_type"]', addressParts.type);
 
-    // Fill zip code
-    const zipInput = await page.$('input[name="zip"]');
-    if (zipInput) {
-      await zipInput.type(listing.zip);
-    }
+    // Fill zip code - field name is "in_zip"
+    console.log('[VLS] Step 1: Filling zip code:', listing.zip);
+    await page.waitForSelector('input[name="in_zip"]', { timeout: 5000 });
+    await page.type('input[name="in_zip"]', listing.zip);
+
+    console.log('[VLS] Step 1: Complete!');
   }
 
   /**
    * Fill Step 2 - Property details
    */
   private async fillStep2(page: Page, listing: MLSListing): Promise<void> {
-    // Sale Price
-    const priceInput = await page.$('input[name="lp"]');
-    if (priceInput) {
-      await priceInput.click({ clickCount: 3 }); // Select all
-      await priceInput.type(listing.price.toString());
-    }
+    console.log('[VLS] Step 2: Filling price...');
+    // Sale Price - field name is "LP"
+    await page.type('input[name="LP"]', listing.price.toString());
 
-    // Bedrooms (dropdown)
-    await this.selectDropdown(page, 'select[name="beds"]', listing.bedrooms.toString());
+    console.log('[VLS] Step 2: Selecting bedrooms...');
+    // Bedrooms (dropdown) - field name is "numbeds"
+    await this.selectDropdown(page, 'select[name="numbeds"]', listing.bedrooms.toString());
 
-    // Bathrooms Full (dropdown)
+    console.log('[VLS] Step 2: Selecting bathrooms...');
+    // Bathrooms Full (dropdown) - field name is "numfulbath"
     const fullBaths = Math.floor(listing.bathrooms);
-    await this.selectDropdown(page, 'select[name="fbaths"]', fullBaths.toString());
+    await this.selectDropdown(page, 'select[name="numfulbath"]', fullBaths.toString());
 
-    // Bathrooms Half (dropdown)
+    // Bathrooms Half (dropdown) - field name is "numhlfbath"
     const halfBaths = listing.bathrooms % 1 >= 0.5 ? 1 : 0;
-    await this.selectDropdown(page, 'select[name="hbaths"]', halfBaths.toString());
+    await this.selectDropdown(page, 'select[name="numhlfbath"]', halfBaths.toString());
 
-    // Square footage
-    const sqftInput = await page.$('input[name="sqft"]');
-    if (sqftInput) {
-      await sqftInput.click({ clickCount: 3 });
-      await sqftInput.type(listing.sqft.toString());
-    }
+    console.log('[VLS] Step 2: Filling sqft...');
+    // Square footage - field name is "sqft"
+    await page.type('input[name="sqft"]', listing.sqft.toString());
 
-    // Year built
+    // Year built - field name is "built"
     if (listing.yearBuilt) {
-      const yearInput = await page.$('input[name="yr_blt"]');
-      if (yearInput) {
-        await yearInput.type(listing.yearBuilt.toString());
-      }
+      console.log('[VLS] Step 2: Filling year built...');
+      await page.type('input[name="built"]', listing.yearBuilt.toString());
     }
 
-    // Lot size
+    // Lot size - field name is "lotsize"
     if (listing.lotSize) {
-      const lotInput = await page.$('input[name="lot_sz"]');
-      if (lotInput) {
-        await lotInput.type(listing.lotSize.toString());
-      }
+      console.log('[VLS] Step 2: Filling lot size...');
+      await page.type('input[name="lotsize"]', listing.lotSize.toString());
     }
 
-    // Property description
-    const descTextarea = await page.$('textarea[name="remarks"]');
+    console.log('[VLS] Step 2: Filling description...');
+    // Property description - field name is "webnote"
+    const descTextarea = await page.$('textarea[name="webnote"]');
     if (descTextarea) {
       await descTextarea.type(listing.description || '');
     }
+
+    console.log('[VLS] Step 2: Complete!');
   }
 
   /**
    * Upload images to a listing
    */
   private async uploadImages(page: Page, listingId: string, imagePaths: string[]): Promise<void> {
-    // Navigate to listing menu
-    await page.goto(`https://vlshomes.com/members_mobi/listmenu.cfm?in_listing=${listingId}`, {
+    if (imagePaths.length === 0) {
+      console.log('[VLS] No images to upload');
+      return;
+    }
+
+    console.log(`[VLS] Uploading ${imagePaths.length} images...`);
+
+    // Navigate directly to the upload page
+    await page.goto(`https://vlshomes.com/members_mobi/ask_multiple.cfm?in_listing=${listingId}`, {
       waitUntil: 'networkidle2',
+      timeout: 30000,
     });
 
-    // Try to find and click "Upload Main photo" or "Upload New Image"
-    const uploadLink = await page.$('a[href*="ask_multiple"]');
-    if (uploadLink) {
-      try {
-        await uploadLink.click();
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 });
+    await new Promise(r => setTimeout(r, 1000));
 
-        // Look for file input
-        const fileInput = await page.$('input[type="file"]');
-        if (fileInput && imagePaths.length > 0) {
-          // Upload first image as main photo
-          await fileInput.uploadFile(imagePaths[0]);
-
-          // Submit the form
-          const submitBtn = await page.$('input[type="submit"]');
-          if (submitBtn) {
-            await submitBtn.click();
-            await page.waitForNavigation({ waitUntil: 'networkidle2' });
-          }
-        }
-      } catch (error) {
-        // Photo upload page may have issues (500 error observed)
-        console.warn('Photo upload may have failed:', error);
+    try {
+      // Find the file input (id="get_photos", name="AllFiles", multiple=true)
+      const fileInput = await page.$('input#get_photos');
+      if (!fileInput) {
+        console.warn('[VLS] File input not found on upload page');
+        return;
       }
+
+      // Upload all images at once (the input supports multiple files)
+      console.log('[VLS] Injecting file paths into input...');
+      await fileInput.uploadFile(...imagePaths);
+      console.log('[VLS] Files injected successfully');
+
+      // Wait a moment for the files to be processed
+      await new Promise(r => setTimeout(r, 1000));
+
+      // Find and click the submit/upload button
+      const submitBtn = await page.$('input[type="submit"]');
+      if (submitBtn) {
+        console.log('[VLS] Clicking upload submit button...');
+        await Promise.all([
+          submitBtn.click(),
+          page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {
+            console.log('[VLS] Upload navigation timeout, checking result...');
+          }),
+        ]);
+        console.log('[VLS] Images uploaded successfully');
+      } else {
+        console.warn('[VLS] Submit button not found on upload page');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('[VLS] Photo upload failed:', message);
     }
   }
 
