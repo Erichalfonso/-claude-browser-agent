@@ -13,11 +13,9 @@ import type {
   VLSCredentials,
 } from '../mls/types';
 import { v4 as uuidv4 } from 'uuid';
-
-// These will be imported when implemented
-// import { MLSApiClient } from '../mls/api-client';
-// import { VLSPoster } from '../vls/poster';
-// import { ImageDownloader } from '../mls/image-downloader';
+import { VLSPoster } from '../vls/poster';
+import { ImageDownloader } from '../mls/image-downloader';
+// import { MLSApiClient } from '../mls/api-client'; // TODO: Implement when credentials available
 
 export interface SyncEngineConfig {
   mlsCredentials: MLSCredentials;
@@ -37,6 +35,8 @@ export interface SyncEngineState {
 export class SyncEngine {
   private config: SyncEngineConfig;
   private state: SyncEngineState;
+  private vlsPoster: VLSPoster | null = null;
+  private imageDownloader: ImageDownloader;
 
   constructor(config: SyncEngineConfig) {
     this.config = config;
@@ -45,6 +45,7 @@ export class SyncEngine {
       shouldStop: false,
       currentSession: null,
     };
+    this.imageDownloader = new ImageDownloader({ tempDir: config.tempImageDir });
   }
 
   /**
@@ -194,40 +195,69 @@ export class SyncEngine {
    * Check if listing already exists on VLS Homes
    */
   private async checkDuplicate(listing: MLSListing): Promise<boolean> {
-    // TODO: Implement duplicate detection
-    // This could check a local database of posted listings
-    // or search VLS Homes for the MLS number
-    return false;
+    try {
+      if (!this.vlsPoster) {
+        this.vlsPoster = new VLSPoster({ credentials: this.config.vlsCredentials });
+      }
+      return await this.vlsPoster.checkDuplicate(listing.mlsNumber);
+    } catch (error) {
+      console.error('Duplicate check failed:', error);
+      return false;
+    }
   }
 
   /**
    * Download listing images to temp directory
    */
   private async downloadImages(listing: MLSListing): Promise<string[]> {
-    // TODO: Implement with ImageDownloader
-    // const downloader = new ImageDownloader(this.config.tempImageDir);
-    // return downloader.downloadAll(listing.imageUrls);
-    return [];
+    if (!listing.imageUrls || listing.imageUrls.length === 0) {
+      return [];
+    }
+
+    const results = await this.imageDownloader.downloadAll(listing.imageUrls, listing.mlsNumber);
+    return results
+      .filter((r) => r.success)
+      .map((r) => r.localPath);
   }
 
   /**
    * Post listing to VLS Homes
    */
   private async postToVLS(listing: MLSListing, imagePaths: string[]): Promise<string> {
-    // TODO: Implement with VLSPoster
-    // const poster = new VLSPoster(this.config.vlsCredentials);
-    // return poster.postListing(listing, imagePaths);
-    throw new Error('VLS Homes automation not yet implemented');
+    if (!this.vlsPoster) {
+      this.vlsPoster = new VLSPoster({ credentials: this.config.vlsCredentials });
+    }
+
+    const result = await this.vlsPoster.postListing(listing, imagePaths);
+
+    if (!result.success) {
+      throw new Error(result.error || 'Failed to post listing');
+    }
+
+    return result.vlsListingId || '';
   }
 
   /**
    * Clean up temporary image files
    */
   private async cleanupImages(imagePaths: string[]): Promise<void> {
-    // TODO: Delete temp files
-    // for (const path of imagePaths) {
-    //   await fs.unlink(path);
-    // }
+    const results = imagePaths.map((localPath) => ({
+      url: '',
+      localPath,
+      success: true,
+    }));
+    await this.imageDownloader.cleanup(results);
+  }
+
+  /**
+   * Cleanup resources when done
+   */
+  async cleanup(): Promise<void> {
+    if (this.vlsPoster) {
+      await this.vlsPoster.close();
+      this.vlsPoster = null;
+    }
+    await this.imageDownloader.cleanupAll();
   }
 
   /**

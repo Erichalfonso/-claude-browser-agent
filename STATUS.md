@@ -1,8 +1,8 @@
 # MLS → VLS Homes Syndicator
 
-## Project Status: In Development
+## Project Status: VLS Automation Complete
 
-**Last Updated:** January 7, 2025
+**Last Updated:** January 9, 2026
 
 ---
 
@@ -36,11 +36,72 @@ Desktop application that automatically syndicates MLS listings to VLS Homes for 
 | **Electron Shell** | ✅ Complete | Window, tray icon, menus, IPC |
 | **React UI** | ✅ Complete | Settings, sync panel, history log |
 | **Settings Storage** | ✅ Complete | Encrypted credential storage |
-| **Sync Engine** | ⏳ Skeleton | Orchestration logic ready, needs MLS/VLS |
+| **Sync Engine** | ✅ Complete | Orchestration with VLS/image integration |
 | **Image Downloader** | ✅ Complete | Downloads with retry & cleanup |
 | **Session Logger** | ✅ Complete | Logs sync history to files |
+| **VLS Automation** | ✅ Complete | Puppeteer script for posting listings |
+| **Field Mapping** | ✅ Complete | MLS → VLS field translation |
 | **MLS API Client** | 🔲 Pending | Waiting for API credentials |
-| **VLS Automation** | 🔲 Pending | Waiting for site access |
+
+---
+
+## VLS Homes Integration
+
+### Login Flow
+```
+1. Navigate to https://vlshomes.com/members_mobi/passgen.cfm
+2. Enter username and password
+3. Click Login button
+4. Click Continue on welcome page
+5. Arrives at dashboard (brokers.cfm)
+```
+
+### Add Listing Flow
+```
+Step 1 (manform.cfm):
+├── Classification: House, Condo, CoOp, Land, Commercial, Rental
+├── Type of listing: Exclusive or MLS listed
+├── Sale/Rent checkboxes
+├── Street: Number, Name, Type
+├── Zip code (required)
+├── Country
+├── Address Display
+└── Categories (Short Sale, REO, etc.)
+
+Step 2 (drl.cfm):
+├── Sale Price
+├── Town (auto-filled from zip)
+├── Area, School District
+├── Bathrooms: Full, Half
+├── Beds, Rooms, Stories
+├── Style, Condition, Construct
+├── House Sqft, Lot Size
+├── Year Built, Taxes
+├── Options (Den, Fireplace, Pool, etc.)
+├── Property Description
+└── Submit
+
+Post-Submit (listmenu.cfm):
+├── Success message
+├── Upload Main photo option
+├── Edit listing options
+└── Marketing tools
+```
+
+### Form Field Mapping
+
+| MLS Field | VLS Field | Notes |
+|-----------|-----------|-------|
+| propertyType | classification | RES/CON/COP/LAN/COM/REN |
+| address | street_num, street_name, street_type | Parsed from address |
+| zip | zip | Required field |
+| price | lp (sale price) | |
+| bedrooms | beds | Dropdown 0-20+ |
+| bathrooms | fbaths, hbaths | Split into full/half |
+| sqft | sqft | |
+| yearBuilt | yr_blt | |
+| lotSize | lot_sz | |
+| description | remarks | Textarea |
 
 ---
 
@@ -58,6 +119,7 @@ mls-vls-syndicator/
 │   │   ├── Settings.tsx        # Credentials & search criteria
 │   │   ├── SyncPanel.tsx       # Sync button & progress
 │   │   ├── ResultsLog.tsx      # History viewer
+│   │   ├── index.tsx           # React entry
 │   │   └── styles.css          # Dark theme
 │   │
 │   ├── mls/                    # MLS data handling
@@ -66,11 +128,11 @@ mls-vls-syndicator/
 │   │   └── api-client.ts       # [TODO] RESO API client
 │   │
 │   ├── vls/                    # VLS Homes automation
-│   │   ├── poster.ts           # [TODO] Puppeteer script
-│   │   └── field-mapping.ts    # [TODO] MLS → VLS mapping
+│   │   ├── poster.ts           # ✅ Puppeteer automation
+│   │   └── field-mapping.ts    # ✅ MLS → VLS mapping
 │   │
 │   └── sync/                   # Sync orchestration
-│       ├── engine.ts           # Main sync logic
+│       ├── engine.ts           # ✅ Main sync logic
 │       └── logger.ts           # Session logging
 │
 ├── assets/                     # App icons
@@ -105,18 +167,11 @@ mls-vls-syndicator/
    - Request RESO Web API credentials
    - Get OAuth2 client ID/secret
 
-2. **Explore VLS Homes**
-   - Get login credentials
-   - Map the "Add Listing" form fields
-   - Build Puppeteer automation
+### After MLS credentials are available
 
-### After dependencies are available
-
-3. Build MLS API client (`src/mls/api-client.ts`)
-4. Build VLS poster (`src/vls/poster.ts`)
-5. Connect all pieces in sync engine
-6. Package as Windows installer (.exe)
-7. Test with real data
+2. Build MLS API client (`src/mls/api-client.ts`)
+3. Test end-to-end sync with real data
+4. Package as Windows installer (.exe)
 
 ---
 
@@ -159,6 +214,12 @@ npm run dev
 # Build for production
 npm run build
 
+# Run Electron
+npm run electron
+
+# Build + Run
+npm run start
+
 # Package as installer
 npm run dist
 ```
@@ -167,6 +228,7 @@ npm run dist
 
 ## Notes
 
-- Project was restructured from a Chrome extension to a standalone Electron app
-- Previous backend/extension code archived in git history
-- Focus is on simplicity for non-technical end user (60-year-old real estate agent)
+- VLS Homes photo upload page (ask_multiple.cfm) returns 500 errors - may need alternative approach
+- Photo upload uses "Upload Main photo" link on listing menu page
+- VLS automatically sets Town from zip code
+- Session maintained via CFID/CFTOKEN cookies
