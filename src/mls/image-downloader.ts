@@ -87,6 +87,7 @@ export class ImageDownloader {
         };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        console.log(`[ImageDownloader] Attempt ${attempt + 1} failed for ${url}: ${lastError.message}`);
 
         if (attempt < retries) {
           // Wait before retry (exponential backoff)
@@ -94,6 +95,8 @@ export class ImageDownloader {
         }
       }
     }
+    console.log(`[ImageDownloader] All attempts failed for ${url}`);
+
 
     return {
       url,

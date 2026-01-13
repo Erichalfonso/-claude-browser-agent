@@ -39,16 +39,16 @@ export default function Settings({ settings, onSave }: SettingsProps) {
   return (
     <div className="settings">
       <section className="settings-section">
-        <h2>MLS API Credentials</h2>
+        <h2>Bridge MLS API</h2>
         <p className="section-description">
-          Contact your MLS provider to get API access credentials.
+          Enter your Bridge API credentials from bridgedataoutput.com
         </p>
 
         <div className="form-group">
           <label>MLS Name</label>
           <input
             type="text"
-            placeholder="e.g., Stellar MLS"
+            placeholder="e.g., Miami REALTORS"
             value={formData.mlsCredentials?.mlsName || ''}
             onChange={(e) =>
               setFormData({
@@ -56,10 +56,8 @@ export default function Settings({ settings, onSave }: SettingsProps) {
                 mlsCredentials: {
                   ...formData.mlsCredentials!,
                   mlsName: e.target.value,
-                  clientId: formData.mlsCredentials?.clientId || '',
-                  clientSecret: formData.mlsCredentials?.clientSecret || '',
-                  tokenEndpoint: formData.mlsCredentials?.tokenEndpoint || '',
-                  apiBaseUrl: formData.mlsCredentials?.apiBaseUrl || '',
+                  serverToken: formData.mlsCredentials?.serverToken || '',
+                  mlsId: formData.mlsCredentials?.mlsId || '',
                 },
               })
             }
@@ -67,36 +65,37 @@ export default function Settings({ settings, onSave }: SettingsProps) {
         </div>
 
         <div className="form-group">
-          <label>Client ID</label>
+          <label>MLS ID (Dataset)</label>
           <input
             type="text"
-            placeholder="Your API Client ID"
-            value={formData.mlsCredentials?.clientId || ''}
+            placeholder="e.g., miamire"
+            value={formData.mlsCredentials?.mlsId || ''}
             onChange={(e) =>
               setFormData({
                 ...formData,
                 mlsCredentials: {
                   ...formData.mlsCredentials!,
-                  clientId: e.target.value,
+                  mlsId: e.target.value,
                 },
               })
             }
           />
+          <small className="help-text">The MLS dataset ID from Bridge (e.g., miamire, stellar)</small>
         </div>
 
         <div className="form-group">
-          <label>Client Secret</label>
+          <label>Server Token</label>
           <div className="password-input">
             <input
               type={showMlsPassword ? 'text' : 'password'}
-              placeholder="Your API Client Secret"
-              value={formData.mlsCredentials?.clientSecret || ''}
+              placeholder="Your Bridge Server Token"
+              value={formData.mlsCredentials?.serverToken || ''}
               onChange={(e) =>
                 setFormData({
                   ...formData,
                   mlsCredentials: {
                     ...formData.mlsCredentials!,
-                    clientSecret: e.target.value,
+                    serverToken: e.target.value,
                   },
                 })
               }
@@ -109,42 +108,7 @@ export default function Settings({ settings, onSave }: SettingsProps) {
               {showMlsPassword ? '🙈' : '👁️'}
             </button>
           </div>
-        </div>
-
-        <div className="form-group">
-          <label>Token Endpoint URL</label>
-          <input
-            type="text"
-            placeholder="https://api.mls.com/oauth/token"
-            value={formData.mlsCredentials?.tokenEndpoint || ''}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                mlsCredentials: {
-                  ...formData.mlsCredentials!,
-                  tokenEndpoint: e.target.value,
-                },
-              })
-            }
-          />
-        </div>
-
-        <div className="form-group">
-          <label>API Base URL</label>
-          <input
-            type="text"
-            placeholder="https://api.mls.com/reso/odata"
-            value={formData.mlsCredentials?.apiBaseUrl || ''}
-            onChange={(e) =>
-              setFormData({
-                ...formData,
-                mlsCredentials: {
-                  ...formData.mlsCredentials!,
-                  apiBaseUrl: e.target.value,
-                },
-              })
-            }
-          />
+          <small className="help-text">Found in your Bridge API dashboard under "Server Token"</small>
         </div>
       </section>
 
@@ -207,12 +171,31 @@ export default function Settings({ settings, onSave }: SettingsProps) {
           Filter which listings to fetch from MLS.
         </p>
 
+        <div className="form-group">
+          <label>County</label>
+          <input
+            type="text"
+            placeholder="e.g., Miami-Dade"
+            value={formData.searchCriteria.county || ''}
+            onChange={(e) =>
+              setFormData({
+                ...formData,
+                searchCriteria: {
+                  ...formData.searchCriteria,
+                  county: e.target.value || undefined,
+                },
+              })
+            }
+          />
+          <small className="help-text">Filter by county (e.g., Miami-Dade, Broward, Palm Beach)</small>
+        </div>
+
         <div className="form-row">
           <div className="form-group">
             <label>Cities (comma separated)</label>
             <input
               type="text"
-              placeholder="Tampa, Orlando, Miami"
+              placeholder="Miami, Hialeah, Coral Gables"
               value={formData.searchCriteria.cities?.join(', ') || ''}
               onChange={(e) =>
                 setFormData({
@@ -230,7 +213,7 @@ export default function Settings({ settings, onSave }: SettingsProps) {
             <label>ZIP Codes (comma separated)</label>
             <input
               type="text"
-              placeholder="33602, 33603, 33604"
+              placeholder="33125, 33126, 33127"
               value={formData.searchCriteria.zipCodes?.join(', ') || ''}
               onChange={(e) =>
                 setFormData({

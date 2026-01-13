@@ -59,13 +59,14 @@ export interface SyncResult {
   vlsListingId?: string; // If successfully posted
 }
 
-// MLS API credentials
+// MLS API credentials (Bridge API)
 export interface MLSCredentials {
-  clientId: string;
-  clientSecret: string;
-  tokenEndpoint: string;
-  apiBaseUrl: string;
-  mlsName: string; // e.g., "Stellar MLS"
+  serverToken: string;       // Bridge Server Token for API auth
+  mlsId: string;             // Dataset ID e.g., "miamire"
+  mlsName: string;           // Display name e.g., "Miami REALTORS"
+  // Optional - for OAuth if needed
+  clientId?: string;
+  clientSecret?: string;
 }
 
 // VLS Homes credentials

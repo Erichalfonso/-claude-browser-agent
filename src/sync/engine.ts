@@ -15,7 +15,8 @@ import type {
 import { v4 as uuidv4 } from 'uuid';
 import { VLSPoster } from '../vls/poster';
 import { ImageDownloader } from '../mls/image-downloader';
-// import { MLSApiClient } from '../mls/api-client'; // TODO: Implement when credentials available
+import { BridgeAPIClient } from '../mls/api-client';
+import { isListingSynced, recordSyncedListing, logSyncAction } from './database';
 
 export interface SyncEngineConfig {
   mlsCredentials: MLSCredentials;
@@ -134,16 +135,27 @@ export class SyncEngine {
   }
 
   /**
-   * Fetch listings from MLS API
+   * Fetch listings from Bridge MLS API
    */
   private async fetchListings(): Promise<MLSListing[]> {
-    // TODO: Implement with real MLS API client
-    // const client = new MLSApiClient(this.config.mlsCredentials);
-    // return client.fetchListings(this.config.searchCriteria);
+    const { mlsCredentials, searchCriteria } = this.config;
 
-    // For now, return empty array (placeholder)
-    console.log('MLS API not yet implemented - returning empty listings');
-    return [];
+    // Check if MLS credentials are configured
+    if (!mlsCredentials?.serverToken || !mlsCredentials?.mlsId) {
+      console.log('[Sync] MLS API credentials not configured');
+      return [];
+    }
+
+    try {
+      console.log('[Sync] Fetching listings from Bridge API...');
+      const client = new BridgeAPIClient({ credentials: mlsCredentials });
+      const listings = await client.fetchListings(searchCriteria, 50);
+      console.log(`[Sync] Fetched ${listings.length} listings from MLS`);
+      return listings;
+    } catch (error) {
+      console.error('[Sync] Failed to fetch listings:', error);
+      throw error;
+    }
   }
 
   /**
@@ -192,14 +204,17 @@ export class SyncEngine {
   }
 
   /**
-   * Check if listing already exists on VLS Homes
+   * Check if listing already exists in our sync database
    */
   private async checkDuplicate(listing: MLSListing): Promise<boolean> {
     try {
-      if (!this.vlsPoster) {
-        this.vlsPoster = new VLSPoster({ credentials: this.config.vlsCredentials });
+      // Check our local database first (much faster than checking VLS)
+      const alreadySynced = isListingSynced(listing.mlsNumber);
+      if (alreadySynced) {
+        logSyncAction(listing.mlsNumber, 'skipped', 'Already synced to VLS');
+        return true;
       }
-      return await this.vlsPoster.checkDuplicate(listing.mlsNumber);
+      return false;
     } catch (error) {
       console.error('Duplicate check failed:', error);
       return false;
@@ -211,13 +226,17 @@ export class SyncEngine {
    */
   private async downloadImages(listing: MLSListing): Promise<string[]> {
     if (!listing.imageUrls || listing.imageUrls.length === 0) {
+      console.log(`[Sync] No image URLs for ${listing.address}`);
       return [];
     }
 
+    console.log(`[Sync] Downloading ${listing.imageUrls.length} images for ${listing.address}...`);
     const results = await this.imageDownloader.downloadAll(listing.imageUrls, listing.mlsNumber);
-    return results
+    const successfulPaths = results
       .filter((r) => r.success)
       .map((r) => r.localPath);
+    console.log(`[Sync] Downloaded ${successfulPaths.length}/${listing.imageUrls.length} images`);
+    return successfulPaths;
   }
 
   /**
@@ -231,10 +250,21 @@ export class SyncEngine {
     const result = await this.vlsPoster.postListing(listing, imagePaths);
 
     if (!result.success) {
+      logSyncAction(listing.mlsNumber, 'failed', result.error || 'Unknown error');
       throw new Error(result.error || 'Failed to post listing');
     }
 
-    return result.vlsListingId || '';
+    // Record the successful sync in our database
+    const vlsId = result.vlsListingId || '';
+    recordSyncedListing(
+      listing.mlsNumber,
+      vlsId,
+      listing.address,
+      listing.city,
+      listing.price
+    );
+
+    return vlsId;
   }
 
   /**
